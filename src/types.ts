@@ -1,0 +1,4 @@
+export type ImageFormat='image/jpeg'|'image/png'|'image/webp';
+export interface ImageMetadata{format:string;width:number;height:number;fields:Array<{label:string;value:string}>;hasSensitiveMetadata:boolean;detectedBlocks:string[]}
+export interface ProcessOptions{quality:number;maxWidth:number|null;maxHeight:number|null;outputFormat:ImageFormat|'original'}
+export interface ProcessedImage{id:string;original:File;output:Blob;outputName:string;width:number;height:number;originalWidth:number;originalHeight:number;originalSize:number;outputSize:number;hash:string;verificationPassed:boolean;removedItems:string[]}
