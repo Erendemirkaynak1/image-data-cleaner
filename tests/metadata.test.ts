@@ -1,0 +1,13 @@
+import{describe,expect,it}from'vitest';
+import{detectImageFormat,detectMetadataBlocks}from'../src/lib/metadata';
+import{validateImageFile}from'../src/lib/image';
+
+const pngSignature=[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a];
+function pngChunk(type:string,data:number[]=[]):number[]{const length=data.length;return[(length>>>24)&255,(length>>>16)&255,(length>>>8)&255,length&255,...type.split('').map(c=>c.charCodeAt(0)),...data,0,0,0,0]}
+function makePng(metadata=false):Uint8Array{return new Uint8Array([...pngSignature,...(metadata?[pngChunk('eXIf',[1,2,3])]:[]),...pngChunk('IEND')])}
+function makeJpegWithExif():Uint8Array{return new Uint8Array([0xff,0xd8,0xff,0xe1,0,10,0x45,0x78,0x69,0x66,0,0,1,2,0xff,0xd9])}
+function makeWebpWithExif():Uint8Array{const chunk=[...Array.from('EXIF').map(c=>c.charCodeAt(0)),1,0,0,0,0xaa];const size=4+chunk.length;return new Uint8Array([...Array.from('RIFF').map(c=>c.charCodeAt(0)),size,0,0,0,...Array.from('WEBP').map(c=>c.charCodeAt(0)),...chunk])}
+
+describe('image signatures',()=>{it('recognizes PNG, JPEG and WEBP by bytes',()=>{expect(detectImageFormat(makePng())).toBe('image/png');expect(detectImageFormat(makeJpegWithExif())).toBe('image/jpeg');expect(detectImageFormat(makeWebpWithExif())).toBe('image/webp')});it('rejects unknown content',()=>{expect(detectImageFormat(new Uint8Array([1,2,3]))).toBeNull()})});
+describe('metadata container inspection',()=>{it('finds PNG EXIF chunks',()=>{expect(detectMetadataBlocks(makePng(true),'image/png')).toContain('eXIf chunk')});it('does not flag a basic PNG without metadata chunks',()=>{expect(detectMetadataBlocks(makePng(false),'image/png')).toEqual([])});it('finds JPEG EXIF APP1 segments',()=>{expect(detectMetadataBlocks(makeJpegWithExif(),'image/jpeg')).toContain('EXIF (APP1)')});it('finds WEBP EXIF chunks',()=>{expect(detectMetadataBlocks(makeWebpWithExif(),'image/webp')).toContain('EXIF chunk')});it('fails closed on truncated PNG structures',()=>{expect(detectMetadataBlocks(new Uint8Array(pngSignature),'image/png')).toContain('Missing or truncated PNG IEND chunk')})});
+describe('file validation',()=>{it('rejects a spoofed PNG MIME type with non-PNG bytes',async()=>{const file=new File(['not an image'],'spoof.png',{type:'image/png'});expect(await validateImageFile(file)).toBe(false)});it('accepts a PNG signature even when MIME is empty',async()=>{const file=new File([makePng(false)],'image.png',{type:''});expect(await validateImageFile(file)).toBe(true)})});
