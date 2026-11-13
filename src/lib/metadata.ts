@@ -15,7 +15,7 @@ export function detectImageFormat(bytes:Uint8Array):ImageFormat|null{
 function jpegBlocks(bytes:Uint8Array):string[]{
  const found:string[]=[];
  if(!hasBytes(bytes,[0xff,0xd8,0xff]))return ['Invalid JPEG signature'];
- let offset=2,sawScan=false,sawEnd=false;
+ let offset=2,sawFrame=false,sawScan=false,sawEnd=false;
  while(offset<bytes.length){
   if(bytes[offset]!==0xff)return ['Malformed JPEG marker sequence'];
   const markerStart=offset;
@@ -31,6 +31,13 @@ function jpegBlocks(bytes:Uint8Array):string[]{
    const length=(bytes[offset]<<8)|bytes[offset+1];
    if(length<2||offset+length>bytes.length)return ['Invalid JPEG segment length'];
    const payload=bytes.subarray(offset+2,offset+length);
+   if([0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf].includes(marker)){
+    if(length<11||payload.length<9)return ['Invalid JPEG frame header'];
+    const height=(payload[1]<<8)|payload[2],width=(payload[3]<<8)|payload[4];
+    if(!width||!height)return ['Invalid JPEG frame dimensions'];
+    sawFrame=true;
+   }
+   if(marker===0xda&&length<8)return ['Invalid JPEG scan header'];
    const prefix=readText(payload.subarray(0,Math.min(payload.length,80)));
    if(marker===0xe1){
     if(prefix.startsWith('Exif\\0\\0'))found.push('EXIF (APP1)');
@@ -63,7 +70,7 @@ function jpegBlocks(bytes:Uint8Array):string[]{
   }
   if(offset<=markerStart)return ['Malformed JPEG structure'];
  }
- if(!sawScan||!sawEnd)return ['JPEG is incomplete or missing image scan/end marker'];
+ if(!sawFrame||!sawScan||!sawEnd)return ['JPEG is incomplete or missing frame, scan or end marker'];
  return [...new Set(found)];
 }
 function pngBlocks(bytes:Uint8Array):string[]{
