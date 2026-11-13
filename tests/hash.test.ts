@@ -1,0 +1,1 @@
+import{describe,expect,it}from'vitest';import{sha256}from'../src/lib/hash';describe('sha256',()=>{it('returns stable SHA-256 hex digest',async()=>{const b=new Blob(['clear pixel']);const a=await sha256(b);expect(a).toBe(await sha256(b));expect(a).toMatch(/^[a-f0-9]{64}$/)})})
