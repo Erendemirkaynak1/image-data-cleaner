@@ -21,7 +21,7 @@ Images are never sent to a backend. Canvas re-encoding creates a fresh image str
 - WebP: EXIF and XMP chunks
 - Parsed EXIF/XMP fields are checked with exifr
 
-The UI only labels a result as verified when structural and parser checks find no remaining metadata. A failed verification is surfaced rather than described as clean. Browser encoders may normalize color profiles and encoding; lossy formats can have small visual differences. PNG alpha is retained.
+The UI only labels a result as verified when structural and parser checks find no remaining metadata. Parser failures and malformed containers fail closed: the result is not offered for download. A failed verification is surfaced rather than described as clean. Browser encoders may normalize color profiles and encoding; lossy formats can have small visual differences. PNG alpha is retained.
 
 ## Run locally
 Requires Node.js 20+.
@@ -40,7 +40,7 @@ Requires Node.js 20+.
 Open http://localhost:8080.
 
 ## Supported formats and limits
-Input and output: JPEG, PNG, WEBP. Animated image formats are not accepted. Maximum input size is 50 MB per file.
+Input and output: JPEG, PNG, WEBP. Animated image formats are not accepted. Maximum input size is 50 MB per file. Inputs are validated against their binary file signatures, not trusted MIME labels. Images above 100 megapixels are rejected to limit memory exhaustion.
 
 ## Limitations
 - Processing depends on browser canvas support and available device memory.
