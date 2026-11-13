@@ -6,7 +6,10 @@ import {inspectMetadata} from './lib/metadata';
 import {downloadBlob,formatBytes,processImage,validateImageFile} from './lib/image';
 import type {ImageMetadata,ProcessOptions,ProcessedImage} from './types';
 type Item={id:string;file:File;preview:string;status:'ready'|'processing'|'done'|'error';metadata?:ImageMetadata;result?:ProcessedImage;error?:string};
-const defaults:ProcessOptions={quality:.92,maxWidth:null,maxHeight:null,outputFormat:'original'};\nconst MAX_BATCH_FILES=50;\nconst MAX_BATCH_BYTES=250*1024*1024;\nconst MAX_IMAGE_PIXELS=100_000_000;
+const defaults:ProcessOptions={quality:.92,maxWidth:null,maxHeight:null,outputFormat:'original'};
+const MAX_BATCH_FILES=50;
+const MAX_BATCH_BYTES=250*1024*1024;
+const MAX_IMAGE_PIXELS=100_000_000;
 export default function App(){
  const [items,setItems]=useState<Item[]>([]);const [selectedId,setSelectedId]=useState<string|null>(null);const [options,setOptions]=useState(defaults);const [busy,setBusy]=useState(false);const [drag,setDrag]=useState(false);const [dark,setDark]=useState(true);const [compare,setCompare]=useState(false);const input=useRef<HTMLInputElement>(null);
  const selected=items.find(x=>x.id===selectedId)??items[0]??null;const completed=items.filter(x=>x.result?.verificationPassed);const processed=items.filter(x=>x.result);const errors=items.filter(x=>x.status==='error'&&!x.result);const saved=completed.reduce((n,x)=>n+x.result!.originalSize-x.result!.outputSize,0);
