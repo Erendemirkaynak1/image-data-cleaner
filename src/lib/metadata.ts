@@ -40,7 +40,7 @@ function jpegBlocks(bytes:Uint8Array):string[]{
    if(marker===0xda&&length<8)return ['Invalid JPEG scan header'];
    const prefix=readText(payload.subarray(0,Math.min(payload.length,80)));
    if(marker===0xe1){
-    if(prefix.startsWith('Exif\\0\\0'))found.push('EXIF (APP1)');
+    if(prefix.startsWith('Exif\0\0'))found.push('EXIF (APP1)');
     else if(prefix.includes('http://ns.adobe.com/xap/'))found.push('XMP (APP1)');
     else found.push('APP1 metadata');
    }
