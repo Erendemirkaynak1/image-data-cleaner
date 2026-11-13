@@ -30,7 +30,7 @@ export async function validateImageFile(file:File):Promise<boolean>{
 export async function processImage(file:File,options:ProcessOptions):Promise<ProcessedImage>{
  const header=new Uint8Array(await file.slice(0,16).arrayBuffer());
  const actualType=detectImageFormat(header);
- if(!actualType||actualType!==file.type)throw new Error('The file signature does not match its declared image format.');
+ if(!actualType||(file.type&&actualType!==file.type))throw new Error('The file signature does not match its declared image format.');
  if(file.size>MAX_FILE_BYTES)throw new Error('The image exceeds the 50 MB file limit.');
  const image=await decodeImage(file);
  try{
