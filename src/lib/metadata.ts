@@ -36,7 +36,7 @@ function jpegBlocks(bytes:Uint8Array):string[]{
   if(marker===0xed)found.push('IPTC / APP13');
   if(marker===0xfe)found.push('JPEG comment');
   if(marker>=0xe2&&marker<=0xef&&marker!==0xed){
-   const isIcc=marker===0xe2&&prefix.startsWith('ICC_PROFILE\\0');
+   const isIcc=marker===0xe2&&prefix.startsWith('ICC_PROFILE');
    const isAdobe=marker===0xee&&prefix.startsWith('Adobe');
    if(!isIcc&&!isAdobe)found.push('APP'+(marker-0xe0)+' metadata');
   }
