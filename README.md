@@ -24,7 +24,7 @@ Images are never sent to a backend. Canvas re-encoding creates a fresh image str
 The UI only labels a result as verified when structural and parser checks find no remaining metadata. Parser failures and malformed containers fail closed: the result is not offered for download. A failed verification is surfaced rather than described as clean. Browser encoders may normalize color profiles and encoding; lossy formats can have small visual differences. PNG alpha is retained.
 
 ## Run locally
-Requires Node.js 20+.
+Requires Node.js 22+.
 
     npm install
     npm run dev
