@@ -18,57 +18,31 @@ function jpegBlocks(bytes:Uint8Array):string[]{
  let offset=2,sawFrame=false,sawScan=false,sawEnd=false;
  while(offset<bytes.length){
   if(bytes[offset]!==0xff)return ['Malformed JPEG marker sequence'];
-  const markerStart=offset;
   while(offset<bytes.length&&bytes[offset]===0xff)offset++;
   if(offset>=bytes.length)return ['Truncated JPEG marker'];
   const marker=bytes[offset++];
-  if(marker===0xd9){sawEnd=true;break;}
-  if(marker===0xda)sawScan=true;
-  else if(marker===0xd8)return ['Unexpected nested JPEG start marker'];
-  else if(marker===0x01||(marker>=0xd0&&marker<=0xd7))continue;
-  else{
-   if(offset+2>bytes.length)return ['Truncated JPEG segment length'];
-   const length=(bytes[offset]<<8)|bytes[offset+1];
-   if(length<2||offset+length>bytes.length)return ['Invalid JPEG segment length'];
-   const payload=bytes.subarray(offset+2,offset+length);
-   if([0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf].includes(marker)){
-    if(length<11||payload.length<9)return ['Invalid JPEG frame header'];
-    const height=(payload[1]<<8)|payload[2],width=(payload[3]<<8)|payload[4];
-    if(!width||!height)return ['Invalid JPEG frame dimensions'];
-    sawFrame=true;
-   }
-   if(marker===0xda&&length<8)return ['Invalid JPEG scan header'];
-   const prefix=readText(payload.subarray(0,Math.min(payload.length,80)));
-   if(marker===0xe1){
-    if(prefix.startsWith('Exif\0\0'))found.push('EXIF (APP1)');
-    else if(prefix.includes('http://ns.adobe.com/xap/'))found.push('XMP (APP1)');
-    else found.push('APP1 metadata');
-   }
-   if(marker===0xed)found.push('IPTC / APP13');
-   if(marker===0xfe)found.push('JPEG comment');
-   if(marker>=0xe2&&marker<=0xef&&marker!==0xed){
-    const isIcc=marker===0xe2&&prefix.startsWith('ICC_PROFILE');
-    const isAdobe=marker===0xee&&prefix.startsWith('Adobe');
-    if(!isIcc&&!isAdobe)found.push('APP'+(marker-0xe0)+' metadata');
-   }
-   offset+=length;
-  }
+  if(marker===0xd9){sawEnd=true;break}
+  if(marker===0x00)return ['Unexpected stuffed byte outside JPEG scan'];
+  if(marker===0xd8)return ['Unexpected nested JPEG start marker'];
+  if(marker===0x01||(marker>=0xd0&&marker<=0xd7))continue;
+  if(offset+2>bytes.length)return ['Truncated JPEG segment length'];
+  const length=(bytes[offset]<<8)|bytes[offset+1];
+  if(length<2||offset+length>bytes.length)return ['Invalid JPEG segment length'];
+  const payload=bytes.subarray(offset+2,offset+length);
+  const frameMarkers=[0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf];
+  if(frameMarkers.includes(marker)){if(length<11||payload.length<9)return ['Invalid JPEG frame header'];const height=(payload[1]<<8)|payload[2],width=(payload[3]<<8)|payload[4];if(!width||!height)return ['Invalid JPEG frame dimensions'];sawFrame=true}
+  const prefix=readText(payload.subarray(0,Math.min(payload.length,80)));
+  if(marker===0xe1){if(prefix.startsWith('Exif\\0\\0'))found.push('EXIF (APP1)');else if(prefix.includes('http://ns.adobe.com/xap/'))found.push('XMP (APP1)');else found.push('APP1 metadata')}
+  if(marker===0xed)found.push('IPTC / APP13');
+  if(marker===0xfe)found.push('JPEG comment');
+  if(marker>=0xe2&&marker<=0xef&&marker!==0xed){const isIcc=marker===0xe2&&prefix.startsWith('ICC_PROFILE');const isAdobe=marker===0xee&&prefix.startsWith('Adobe');if(!isIcc&&!isAdobe)found.push('APP'+(marker-0xe0)+' metadata')}
+  offset+=length;
   if(marker===0xda){
-   let nextMarker=false;
-   while(offset<bytes.length){
-    if(bytes[offset++]!==0xff)continue;
-    const candidateStart=offset-1;
-    while(offset<bytes.length&&bytes[offset]===0xff)offset++;
-    if(offset>=bytes.length)break;
-    const code=bytes[offset++];
-    if(code===0x00||(code>=0xd0&&code<=0xd7))continue;
-    if(code===0xd9){sawEnd=true;nextMarker=false;break;}
-    offset=candidateStart;nextMarker=true;break;
-   }
-   if(sawEnd)break;
-   if(!nextMarker)return ['JPEG scan is truncated or missing its end marker'];
+   if(length<8)return ['Invalid JPEG scan header'];
+   sawScan=true;let markerFound=false;
+   while(offset<bytes.length){if(bytes[offset++]!==0xff)continue;while(offset<bytes.length&&bytes[offset]===0xff)offset++;if(offset>=bytes.length)return ['Truncated JPEG scan marker'];const code=bytes[offset];if(code===0x00||(code>=0xd0&&code<=0xd7)){offset++;continue}offset--;markerFound=true;break}
+   if(!markerFound)return ['JPEG scan is truncated or missing its end marker'];
   }
-  if(offset<=markerStart)return ['Malformed JPEG structure'];
  }
  if(!sawFrame||!sawScan||!sawEnd)return ['JPEG is incomplete or missing frame, scan or end marker'];
  return [...new Set(found)];
