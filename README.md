@@ -19,7 +19,7 @@ Images are never sent to a backend. Canvas re-encoding creates a fresh image str
 - JPEG: APP1, APP13 and comment markers
 - PNG: eXIf, tEXt, zTXt, iTXt and tIME chunks
 - WebP: EXIF and XMP chunks
-- Parsed EXIF/XMP fields are checked with exifr
+- JPEG EXIF fields are inspected with exifr when an EXIF APP1 segment is present; PNG and WEBP are verified through their native container chunk structures. JPEG APP markers, comments, PNG metadata chunks, and WEBP EXIF/XMP chunks are checked structurally.
 
 The UI only labels a result as verified when structural and parser checks find no remaining metadata. Parser failures and malformed containers fail closed: the result is not offered for download. A failed verification is surfaced rather than described as clean. Browser encoders may normalize color profiles and encoding; lossy formats can have small visual differences. PNG alpha is retained.
 
