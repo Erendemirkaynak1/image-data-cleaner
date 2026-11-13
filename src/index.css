@@ -172,3 +172,11 @@ footer{margin-top:40px}
  .bottom-grid{margin-top:12px}
  footer{margin-top:28px}
 }
+
+.browse-inline{border:0;padding:0;background:none;color:#b0a8ff;text-decoration:underline;text-underline-offset:3px;font-size:inherit;cursor:pointer}
+.browse-inline:hover{color:#d0cbff}
+.file-row[role=button]{cursor:pointer}
+.file-row[role=button]:focus-visible,.remove-file:focus-visible{outline:2px solid #a49bff;outline-offset:2px}
+.remove-file{cursor:pointer;display:grid;place-items:center;border-radius:5px}
+.remove-file:hover{background:#f0718218}
+.light .browse-inline{color:#6658d2}
