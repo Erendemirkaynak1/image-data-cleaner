@@ -32,7 +32,7 @@ function jpegBlocks(bytes:Uint8Array):string[]{
   const frameMarkers=[0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf];
   if(frameMarkers.includes(marker)){if(length<11||payload.length<9)return ['Invalid JPEG frame header'];const height=(payload[1]<<8)|payload[2],width=(payload[3]<<8)|payload[4];if(!width||!height)return ['Invalid JPEG frame dimensions'];sawFrame=true}
   const prefix=readText(payload.subarray(0,Math.min(payload.length,80)));
-  if(marker===0xe1){if(prefix.startsWith('Exif\\0\\0'))found.push('EXIF (APP1)');else if(prefix.includes('http://ns.adobe.com/xap/'))found.push('XMP (APP1)');else found.push('APP1 metadata')}
+  if(marker===0xe1){if(prefix.startsWith('Exif\0\0'))found.push('EXIF (APP1)');else if(prefix.includes('http://ns.adobe.com/xap/'))found.push('XMP (APP1)');else found.push('APP1 metadata')}
   if(marker===0xed)found.push('IPTC / APP13');
   if(marker===0xfe)found.push('JPEG comment');
   if(marker>=0xe2&&marker<=0xef&&marker!==0xed){const isIcc=marker===0xe2&&prefix.startsWith('ICC_PROFILE');const isAdobe=marker===0xee&&prefix.startsWith('Adobe');if(!isIcc&&!isAdobe)found.push('APP'+(marker-0xe0)+' metadata')}
