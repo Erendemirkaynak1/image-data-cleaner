@@ -1,9 +1,117 @@
 import * as exifr from 'exifr';
-import type {ImageMetadata} from '../types';
-const text=(b:Uint8Array)=>new TextDecoder('latin1').decode(b);
-function jpegBlocks(b:Uint8Array):string[]{const out:string[]=[];if(b[0]!==255||b[1]!==216)return out;let p=2;while(p+4<b.length&&b[p]===255){const m=b[p+1];if(m===218||m===217)break;const n=(b[p+2]<<8)|b[p+3];if(n<2||p+2+n>b.length)break;const payload=text(b.subarray(p+4,p+2+n));if(m===225)out.push(payload.includes('Exif')?'EXIF':'APP1 metadata');if(m===237)out.push('IPTC / APP13');if(m===254)out.push('JPEG comment');if(payload.includes('http://ns.adobe.com/xap/'))out.push('XMP');p+=2+n}return [...new Set(out)]}
-function pngBlocks(b:Uint8Array):string[]{const out:string[]=[];if(text(b.subarray(0,8))!=='\x89PNG\r\n\x1a\n')return out;let p=8;while(p+12<=b.length){const n=new DataView(b.buffer,b.byteOffset+p,4).getUint32(0);if(p+12+n>b.length)break;const t=text(b.subarray(p+4,p+8));if(['eXIf','tEXt','zTXt','iTXt','tIME'].includes(t))out.push(t+' chunk');p+=12+n;if(t==='IEND')break}return out}
-function webpBlocks(b:Uint8Array):string[]{const out:string[]=[];if(text(b.subarray(0,4))!=='RIFF'||text(b.subarray(8,12))!=='WEBP')return out;let p=12;while(p+8<=b.length){const t=text(b.subarray(p,p+4));const n=new DataView(b.buffer,b.byteOffset+p+4,4).getUint32(0,true);if(t==='EXIF')out.push('EXIF chunk');if(t==='XMP ')out.push('XMP chunk');p+=8+n+(n%2)}return out}
-function structuralBlocks(b:Uint8Array,type:string):string[]{if(type==='image/jpeg')return jpegBlocks(b);if(type==='image/png')return pngBlocks(b);if(type==='image/webp')return webpBlocks(b);return []}
-export async function inspectMetadata(file:File|Blob,width=0,height=0):Promise<ImageMetadata>{const bytes=new Uint8Array(await file.arrayBuffer());const type=file.type||'unknown';const detectedBlocks=structuralBlocks(bytes,type);const fields:ImageMetadata['fields']=[];try{const data=await exifr.parse(file,{gps:true,tiff:true,exif:true,xmp:true,iptc:true,icc:false});if(data&&typeof data==='object'){for(const key of ['Make','Model','LensModel','Software','DateTimeOriginal','CreateDate','GPSLatitude','GPSLongitude','GPSAltitude','Artist','Copyright','ImageDescription']){const v=(data as Record<string,unknown>)[key];if(v!==undefined&&v!==null)fields.push({label:key,value:v instanceof Date?v.toISOString():String(v)})}}}catch{/* Structural scan remains available for images without readable EXIF. */}return{format:type.replace('image/','').toUpperCase(),width,height,fields,detectedBlocks,hasSensitiveMetadata:detectedBlocks.length>0||fields.length>0}}
-export async function verifyMetadataRemoved(blob:Blob):Promise<{passed:boolean;remaining:string[]}>{const bytes=new Uint8Array(await blob.arrayBuffer());const remaining=structuralBlocks(bytes,blob.type);try{const data=await exifr.parse(blob,{gps:true,tiff:true,exif:true,xmp:true,iptc:true});if(data&&Object.keys(data).length)remaining.push('Parsed EXIF/XMP metadata')}catch{/* Empty metadata is expected. */}return{passed:remaining.length===0,remaining:[...new Set(remaining)]}}
+import type {ImageMetadata,ImageFormat} from '../types';
+
+const decoder=new TextDecoder('latin1');
+const readText=(bytes:Uint8Array)=>decoder.decode(bytes);
+const hasBytes=(bytes:Uint8Array,signature:number[])=>signature.every((value,index)=>bytes[index]===value);
+
+export function detectImageFormat(bytes:Uint8Array):ImageFormat|null{
+ if(hasBytes(bytes,[0xff,0xd8,0xff]))return 'image/jpeg';
+ if(hasBytes(bytes,[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]))return 'image/png';
+ if(readText(bytes.subarray(0,4))==='RIFF'&&readText(bytes.subarray(8,12))==='WEBP')return 'image/webp';
+ return null;
+}
+
+function jpegBlocks(bytes:Uint8Array):string[]{
+ const found:string[]=[];
+ if(!hasBytes(bytes,[0xff,0xd8]))return ['Invalid JPEG signature'];
+ let offset=2;
+ while(offset<bytes.length){
+  if(bytes[offset]!==0xff)return ['Malformed JPEG marker sequence'];
+  while(offset<bytes.length&&bytes[offset]===0xff)offset++;
+  if(offset>=bytes.length)return ['Truncated JPEG marker'];
+  const marker=bytes[offset++];
+  if(marker===0xda||marker===0xd9)break;
+  if(marker===0x01||(marker>=0xd0&&marker<=0xd7))continue;
+  if(offset+2>bytes.length)return ['Truncated JPEG segment length'];
+  const length=(bytes[offset]<<8)|bytes[offset+1];
+  if(length<2||offset+length>bytes.length)return ['Invalid JPEG segment length'];
+  const payload=bytes.subarray(offset+2,offset+length);
+  const prefix=readText(payload.subarray(0,Math.min(payload.length,80)));
+  if(marker===0xe1){
+   if(prefix.startsWith('Exif\0\0'))found.push('EXIF (APP1)');
+   else if(prefix.includes('http://ns.adobe.com/xap/'))found.push('XMP (APP1)');
+   else found.push('APP1 metadata');
+  }
+  if(marker===0xed)found.push('IPTC / APP13');
+  if(marker===0xfe)found.push('JPEG comment');
+  offset+=length;
+ }
+ return [...new Set(found)];
+}
+
+function pngBlocks(bytes:Uint8Array):string[]{
+ const found:string[]=[];
+ if(!hasBytes(bytes,[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]))return ['Invalid PNG signature'];
+ let offset=8,ended=false;
+ while(offset+12<=bytes.length){
+  const length=new DataView(bytes.buffer,bytes.byteOffset+offset,4).getUint32(0);
+  if(length>bytes.length-offset-12)return ['Invalid PNG chunk length'];
+  const type=readText(bytes.subarray(offset+4,offset+8));
+  if(['eXIf','tEXt','zTXt','iTXt','tIME'].includes(type))found.push(type+' chunk');
+  offset+=12+length;
+  if(type==='IEND'){ended=true;break;}
+ }
+ if(!ended)found.push('Missing or truncated PNG IEND chunk');
+ return [...new Set(found)];
+}
+
+function webpBlocks(bytes:Uint8Array):string[]{
+ const found:string[]=[];
+ if(readText(bytes.subarray(0,4))!=='RIFF'||readText(bytes.subarray(8,12))!=='WEBP')return ['Invalid WEBP signature'];
+ if(bytes.length<12)return ['Truncated WEBP header'];
+ const declared=new DataView(bytes.buffer,bytes.byteOffset+4,4).getUint32(0,true)+8;
+ if(declared>bytes.length)return ['Truncated WEBP container'];
+ let offset=12;
+ while(offset+8<=Math.min(declared,bytes.length)){
+  const type=readText(bytes.subarray(offset,offset+4));
+  const length=new DataView(bytes.buffer,bytes.byteOffset+offset+4,4).getUint32(0,true);
+  if(length>declared-offset-8)return ['Invalid WEBP chunk length'];
+  if(type==='EXIF')found.push('EXIF chunk');
+  if(type==='XMP ')found.push('XMP chunk');
+  offset+=8+length+(length%2);
+ }
+ if(offset!==declared&&offset!==declared-1)return ['Malformed WEBP chunk layout'];
+ return [...new Set(found)];
+}
+
+export function detectMetadataBlocks(bytes:Uint8Array,type:string):string[]{
+ if(type==='image/jpeg')return jpegBlocks(bytes);
+ if(type==='image/png')return pngBlocks(bytes);
+ if(type==='image/webp')return webpBlocks(bytes);
+ return ['Unsupported image format'];
+}
+
+async function parseMetadata(blob:Blob):Promise<Record<string,unknown>>{
+ const parsed=await exifr.parse(blob,{gps:true,tiff:true,exif:true,xmp:true,iptc:true,icc:false});
+ return parsed&&typeof parsed==='object'?parsed as Record<string,unknown>:{};
+}
+
+export async function inspectMetadata(file:File|Blob,width=0,height=0):Promise<ImageMetadata>{
+ const bytes=new Uint8Array(await file.arrayBuffer());
+ const type=file.type||detectImageFormat(bytes)||'unknown';
+ const detectedBlocks=detectMetadataBlocks(bytes,type);
+ const fields:ImageMetadata['fields']=[];
+ try{
+  const data=await parseMetadata(file);
+  for(const key of ['Make','Model','LensModel','Software','DateTimeOriginal','CreateDate','GPSLatitude','GPSLongitude','GPSAltitude','Artist','Copyright','ImageDescription']){
+   const value=data[key];
+   if(value!==undefined&&value!==null)fields.push({label:key,value:value instanceof Date?value.toISOString():String(value)});
+  }
+ }catch{
+  detectedBlocks.push('Metadata parser could not inspect this file');
+ }
+ return{format:type.replace('image/','').toUpperCase(),width,height,fields,detectedBlocks,hasSensitiveMetadata:detectedBlocks.length>0||fields.length>0};
+}
+
+export async function verifyMetadataRemoved(blob:Blob):Promise<{passed:boolean;remaining:string[]}>{
+ const bytes=new Uint8Array(await blob.arrayBuffer());
+ const remaining=detectMetadataBlocks(bytes,blob.type);
+ try{
+  const parsed=await parseMetadata(blob);
+  if(Object.keys(parsed).length)remaining.push('Parsed EXIF/XMP metadata');
+ }catch{
+  remaining.push('Metadata parser could not verify output');
+ }
+ return{passed:remaining.length===0,remaining:[...new Set(remaining)]};
+}
