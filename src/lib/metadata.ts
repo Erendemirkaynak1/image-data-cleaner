@@ -82,6 +82,8 @@ export function detectMetadataBlocks(bytes:Uint8Array,type:string):string[]{
  return ['Unsupported image format'];
 }
 
+const privacyTags=['Make','Model','CameraSerialNumber','BodySerialNumber','LensModel','LensSerialNumber','SerialNumber','Software','DateTimeOriginal','CreateDate','ModifyDate','GPSLatitude','GPSLongitude','GPSAltitude','GPSDateStamp','GPSTimeStamp','Artist','Copyright','ImageDescription','UserComment','OwnerName','XPTitle','XPComment','XPAuthor','XPKeywords','XPSubject'];
+
 async function parseMetadata(blob:Blob):Promise<Record<string,unknown>>{
  const parsed=await exifr.parse(blob,{gps:true,tiff:true,exif:true,xmp:true,iptc:true,icc:false});
  return parsed&&typeof parsed==='object'?parsed as Record<string,unknown>:{};
@@ -92,9 +94,9 @@ export async function inspectMetadata(file:File|Blob,width=0,height=0):Promise<I
  const type=file.type||detectImageFormat(bytes)||'unknown';
  const detectedBlocks=detectMetadataBlocks(bytes,type);
  const fields:ImageMetadata['fields']=[];
- try{
+ if(type==='image/jpeg')try{
   const data=await parseMetadata(file);
-  for(const key of ['Make','Model','LensModel','Software','DateTimeOriginal','CreateDate','GPSLatitude','GPSLongitude','GPSAltitude','Artist','Copyright','ImageDescription']){
+  for(const key of privacyTags){
    const value=data[key];
    if(value!==undefined&&value!==null)fields.push({label:key,value:value instanceof Date?value.toISOString():String(value)});
   }
@@ -107,9 +109,9 @@ export async function inspectMetadata(file:File|Blob,width=0,height=0):Promise<I
 export async function verifyMetadataRemoved(blob:Blob):Promise<{passed:boolean;remaining:string[]}>{
  const bytes=new Uint8Array(await blob.arrayBuffer());
  const remaining=detectMetadataBlocks(bytes,blob.type);
- try{
+ if(blob.type==='image/jpeg')try{
   const parsed=await parseMetadata(blob);
-  if(Object.keys(parsed).length)remaining.push('Parsed EXIF/XMP metadata');
+  if(privacyTags.some(key=>parsed[key]!==undefined&&parsed[key]!==null))remaining.push('Parsed privacy-related EXIF metadata');
  }catch{
   remaining.push('Metadata parser could not verify output');
  }
